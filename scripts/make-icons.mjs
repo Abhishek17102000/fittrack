@@ -1,6 +1,6 @@
 // Generates the PWA icons (pure Node, no deps): a dumbbell on a dark green tile.
 import { deflateSync } from 'node:zlib'
-import { writeFileSync, mkdirSync } from 'node:fs'
+import { writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs'
 
 function crc32(buf) {
   let c, crc = ~0
@@ -55,3 +55,16 @@ writeFileSync('public/icons/icon-512.png', png(512, glyph(1, true)))
 writeFileSync('public/icons/maskable-512.png', png(512, glyph(0.72, false)))
 writeFileSync('public/icons/apple-touch-icon.png', png(180, glyph(0.85, false)))
 console.log('icons written')
+
+// Android launcher icons (legacy PNGs; the adaptive-icon XML from the template is removed so these are used)
+const RES = 'android/app/src/main/res'
+if (existsSync(RES)) {
+  const sizes = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 }
+  for (const [d, s] of Object.entries(sizes)) {
+    for (const name of ['ic_launcher.png', 'ic_launcher_round.png', 'ic_launcher_foreground.png']) {
+      writeFileSync(`${RES}/mipmap-${d}/${name}`, png(s, glyph(name.includes('foreground') ? 0.72 : 1, true)))
+    }
+  }
+  rmSync(`${RES}/mipmap-anydpi-v26`, { recursive: true, force: true })
+  console.log('android icons written')
+}

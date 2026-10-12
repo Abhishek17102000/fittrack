@@ -1,0 +1,55 @@
+name: Build Android APK
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: android
+  cancel-in-progress: true
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npx cap sync android
+      - name: Restore signing key
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/fittrack.p12"
+          echo "FITTRACK_KEYSTORE=$RUNNER_TEMP/fittrack.p12" >> "$GITHUB_ENV"
+          echo "FITTRACK_KEYSTORE_PASSWORD=$KS_PW" >> "$GITHUB_ENV"
+      - name: Build signed release APK
+        working-directory: android
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+      - name: Publish APK to the android-latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK=$(ls android/app/build/outputs/apk/release/*.apk | head -1)
+          cp "$APK" FitTrack.apk
+          gh release view android-latest >/dev/null 2>&1 || gh release create android-latest --title "FitTrack Android (latest)" --notes "Download FitTrack.apk and install it on your phone."
+          gh release upload android-latest FitTrack.apk --clobber
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FitTrack-apk
+          path: FitTrack.apk

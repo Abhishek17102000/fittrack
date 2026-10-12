@@ -7,6 +7,7 @@ import App from './App'
 import { db, ensureSeeded } from './db/db'
 import { getAppDay, getTimeZone } from './engine/dateEngine'
 import { Splash } from './components/ui'
+import { initNative, isNative } from './lib/native'
 
 const root = createRoot(document.getElementById('root')!)
 root.render(<Splash />)
@@ -34,7 +35,9 @@ async function boot() {
   await ensureSeeded(getAppDay(new Date(), tz, boundary).date, tz)
   // ask the browser not to evict our data when space runs low
   void navigator.storage?.persist?.()
-  registerSW({ immediate: true })
+  // the Android app bundles its files, so the service worker is only for the browser/PWA
+  if (isNative()) await initNative()
+  else registerSW({ immediate: true })
   root.render(
     <StrictMode>
       <HashRouter>

@@ -80,10 +80,10 @@ test('first run: onboarding lands on today\'s workout (Monday = Lower Body) with
   await page.getByText('Welcome to FitTrack').waitFor()
   await page.screenshot({ path: `${SHOTS}/01-onboarding.png` })
   await onboard(page)
-  assert.ok(await page.getByRole('heading', { name: 'Lower Body Strength' }).isVisible())
-  assert.ok(await page.getByText('Good morning, Asha').isVisible())
-  assert.ok(await page.getByText('Beginner').first().isVisible())
-  assert.ok(await page.getByText('Goblet Squat').first().isVisible()) // beginner variant
+  await page.getByRole('heading', { name: 'Lower Body Strength' }).waitFor()
+  await page.getByText('Good morning, Asha').waitFor()
+  await page.getByText('Beginner').first().waitFor()
+  await page.getByText('Goblet Squat').first().waitFor() // beginner variant
   await page.screenshot({ path: `${SHOTS}/02-today.png`, fullPage: true })
   assert.deepEqual(errors, [])
   await context.close()
@@ -92,8 +92,8 @@ test('first run: onboarding lands on today\'s workout (Monday = Lower Body) with
 test('1:30 AM Monday (IST) still shows Sunday\'s rest day because of the 4 AM day boundary', async () => {
   const { context, page } = await freshPage('2026-10-12T01:30:00+05:30')
   await onboard(page)
-  assert.ok(await page.getByRole('heading', { name: 'Rest & Recover' }).isVisible())
-  assert.ok(await page.getByText(/Sunday,? 11 October/).isVisible())
+  await page.getByRole('heading', { name: 'Rest & Recover' }).waitFor()
+  await page.getByText(/Sunday,? 11 October/).waitFor()
   await context.close()
 })
 
@@ -101,8 +101,8 @@ test('same instant in another timezone shows that timezone\'s day', async () => 
   // 2026-10-12 11:00 IST == 2026-10-11 23:30 in New York => Sunday there
   const { context, page } = await freshPage(MONDAY_11AM, { tz: 'America/New_York' })
   await onboard(page)
-  assert.ok(await page.getByText(/Sunday,? 11 October/).isVisible())
-  assert.ok(await page.getByRole('heading', { name: 'Rest & Recover' }).isVisible())
+  await page.getByText(/Sunday,? 11 October/).waitFor()
+  await page.getByRole('heading', { name: 'Rest & Recover' }).waitFor()
   await context.close()
 })
 
@@ -129,7 +129,7 @@ test('full workout: log every set, rest timer, finish, summary, streak, complete
   await page.waitForURL(/#\/summary\/\d+/)
   await page.getByText('Workout complete').waitFor()
   await page.screenshot({ path: `${SHOTS}/04-summary.png`, fullPage: true })
-  assert.ok(await page.getByText('1-day streak').isVisible())
+  await page.getByText('1-day streak').waitFor()
 
   await page.getByRole('button', { name: 'Done' }).click()
   await page.getByText(/Completed - view summary/).waitFor()
@@ -173,11 +173,11 @@ test('diet: add foods, portions, protein ring and totals update; custom food wor
   await page.getByRole('heading', { name: 'Diet' }).waitFor()
   await page.getByRole('button', { name: 'Add food to Breakfast' }).click()
   await page.getByLabel('Search foods').fill('paneer bhurji')
-  await page.getByRole('button', { name: /Paneer bhurji/ }).click()
-  await page.getByRole('button', { name: /Paneer bhurji/ }).click() // adds another portion (merges)
+  await page.getByRole('button', { name: /^Paneer bhurji/ }).click()
+  await page.getByRole('button', { name: /^Paneer bhurji/ }).click() // adds another portion (merges)
   await page.getByRole('button', { name: 'Close' }).click()
-  assert.ok(await page.getByText(/2 × 1 katori/).isVisible())
-  assert.ok(await page.getByRole('img', { name: /Protein: 38 of 95/ }).isVisible())
+  await page.getByText(/2 × 1 katori/).waitFor()
+  await page.getByRole('img', { name: /Protein: 38 of 95/ }).waitFor()
 
   // custom food
   await page.getByRole('button', { name: 'Add food to Dinner' }).click()
@@ -202,7 +202,7 @@ test('supplements: today checklist, tick/untick, weekly vitamin D, B12 due on Mo
   await page.getByRole('link', { name: 'Supps' }).click()
   await page.getByRole('heading', { name: 'Supplements', exact: true }).waitFor()
   for (const n of ['Creatine monohydrate', 'Vitamin D3', 'Vitamin B12', 'Omega-3', 'Vitamin C']) {
-    assert.ok(await page.getByRole('button', { name: new RegExp(n) }).first().isVisible(), `${n} should be due on Monday`)
+    await page.getByRole('button', { name: new RegExp(n) }).first().waitFor({ timeout: 8000 })
   }
   await page.getByRole('button', { name: /Vitamin B12/ }).first().click()
   await page.getByRole('button', { name: /^Vitamin B12/, pressed: true }).waitFor()
@@ -221,7 +221,7 @@ test('B12 (Mon/Wed/Fri) is not due on Tuesday', async () => {
   await page.getByRole('link', { name: 'Supps' }).click()
   await page.getByRole('heading', { name: 'Supplements', exact: true }).waitFor()
   assert.equal(await page.getByRole('button', { name: /^Vitamin B12/ }).count(), 0)
-  assert.ok(await page.getByRole('button', { name: /Creatine/ }).first().isVisible())
+  await page.getByRole('button', { name: /Creatine/ }).first().waitFor()
   await context.close()
 })
 
@@ -305,7 +305,7 @@ test('settings: theme switch, schedule edit changes today\'s plan, export JSON, 
   await page.getByRole('link', { name: 'Today' }).click()
   await page.getByRole('heading', { name: 'Upper Body Strength' }).waitFor()
   await page.getByRole('link', { name: 'Diet' }).click()
-  await page.getByText('Dal (cooked)').waitFor()
+  await page.getByText('Dal (cooked)', { exact: true }).waitFor()
 
   // a non-backup file is rejected without touching data
   await page.getByRole('link', { name: 'Settings' }).click()
@@ -335,7 +335,7 @@ test('offline: after the first load the app starts with no network and keeps its
   await context.setOffline(true)
   await page.reload() // still on the Diet tab
   await page.getByRole('heading', { name: 'Diet', exact: true }).waitFor()
-  await page.getByText('Roti / chapati').waitFor()
+  await page.getByText('Roti / chapati', { exact: true }).waitFor()
   // starting a workout offline works too
   await page.getByRole('link', { name: 'Today' }).click()
   await page.getByRole('button', { name: /Start workout/ }).click()

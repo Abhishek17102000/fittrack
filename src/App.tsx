@@ -13,6 +13,7 @@ import Settings from './pages/Settings'
 import Session from './pages/Session'
 import Summary from './pages/Summary'
 import Onboarding from './pages/Onboarding'
+import { onNativeTap } from './lib/native'
 
 const TABS: { to: string; label: string; icon: IconName }[] = [
   { to: '/', label: 'Today', icon: 'dumbbell' },
@@ -41,6 +42,7 @@ function useTheme() {
 /** Lets a tapped notification (handled in the service worker) deep-link into the app. */
 function useNotificationNavigation() {
   const nav = useNavigate()
+  useEffect(() => onNativeTap((route) => nav(route)), [nav])
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
     const onMsg = (e: MessageEvent) => {

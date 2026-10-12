@@ -8,6 +8,8 @@ import { minutesIntoAppDay } from '../engine/dateEngine'
 import { suppStatus } from '../engine/supplementEngine'
 import { TEMPLATES } from '../data/templates'
 import { permissionState, showNotification } from '../lib/notify'
+import { cancelNativeReminders, isNative, syncNativeReminders } from '../lib/native'
+import { buildNativePlan } from '../lib/nativePlan'
 
 /** A reminder fires as a system notification only if it became due within this window (no stale spam on app open). */
 const FIRE_WINDOW_MIN = 180
@@ -83,7 +85,8 @@ export function useReminders(): { pending: Reminder[]; dismiss: (id: string) => 
   const pending = due.filter((r) => !hidden.has(r.id))
 
   useEffect(() => {
-    if (!ctx || !notified || !profile.notif.enabled || permissionState() !== 'granted') return
+    // inside the Android app the OS schedules reminders (see RemindersProvider), so don't double-notify
+    if (isNative() || !ctx || !notified || !profile.notif.enabled || permissionState() !== 'granted') return
     const seen = new Set(notified.map((n) => n.key))
     for (const r of dueReminders(ctx)) {
       if (seen.has(r.id) || firing.current.has(r.id)) continue
@@ -116,7 +119,35 @@ const RCtx = createContext<RemindersValue>({ pending: [], dismiss: async () => u
 /** Mount once: evaluates reminders and fires notifications; screens read the pending list via usePending(). */
 export function RemindersProvider({ children }: { children: ReactNode }) {
   const v = useReminders()
+  useNativeScheduling()
   return <RCtx.Provider value={v}>{children}</RCtx.Provider>
 }
 
 export const usePending = () => useContext(RCtx)
+
+/**
+ * Android app only: keeps the next 7 days of reminders scheduled with the OS so they fire even when the app is closed.
+ * Rebuilt whenever relevant data changes, the app opens, or every 30 minutes while it is open.
+ */
+function useNativeScheduling() {
+  const { now, today, profile, schedule, overrides } = useApp()
+  const enabled = isNative() && profile.notif.enabled
+  const bucket = Math.floor(now.getTime() / (30 * 60000))
+  const plan = useLiveQuery(
+    () => (enabled ? buildNativePlan({ today, profile, schedule, overrides }) : Promise.resolve(null)),
+    [enabled, today, profile, schedule, overrides, bucket],
+  )
+  const last = useRef('')
+  useEffect(() => {
+    if (!isNative() || plan === undefined) return
+    if (plan === null) {
+      if (last.current !== 'off') void cancelNativeReminders()
+      last.current = 'off'
+      return
+    }
+    const sig = JSON.stringify(plan.map((p) => [p.id, p.fireDate, p.fireMinutes, p.body]))
+    if (sig === last.current) return
+    last.current = sig
+    void syncNativeReminders(plan)
+  }, [plan])
+}

@@ -1,9 +1,13 @@
-export const notificationsSupported = (): boolean => typeof window !== 'undefined' && 'Notification' in window
+import { isNative, nativePermission, nativeRequestPermission, nativeShowNow } from './native'
+export const notificationsSupported = (): boolean => isNative() || (typeof window !== 'undefined' && 'Notification' in window)
 
-export const permissionState = (): NotificationPermission | 'unsupported' =>
-  notificationsSupported() ? Notification.permission : 'unsupported'
+export const permissionState = (): NotificationPermission | 'unsupported' => {
+  if (isNative()) return nativePermission()
+  return notificationsSupported() ? Notification.permission : 'unsupported'
+}
 
 export async function requestPermission(): Promise<NotificationPermission | 'unsupported'> {
+  if (isNative()) return nativeRequestPermission()
   if (!notificationsSupported()) return 'unsupported'
   if (Notification.permission !== 'default') return Notification.permission
   try {
@@ -23,6 +27,7 @@ export interface NotifyArgs {
 /** Shows a system notification (through the service worker, which Android requires). */
 export async function showNotification(a: NotifyArgs): Promise<boolean> {
   if (permissionState() !== 'granted') return false
+  if (isNative()) return nativeShowNow(a.title, a.body, a.route)
   const opts: NotificationOptions = {
     body: a.body,
     tag: a.tag,

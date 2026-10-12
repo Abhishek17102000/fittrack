@@ -5,6 +5,7 @@ import { adherenceCells, adherencePct, suppStatus } from './supplementEngine'
 import { computeStreak, evaluateLevel, isComeback, isDeloadWeek, loadMode } from './levelEngine'
 import { suggestWeight } from './progression'
 import { buildReminders, dueReminders, type ReminderCtx } from './reminderEngine'
+import { notificationId, planReminders, type PlanInput } from './reminderPlan'
 import { DAY_KEYS, TEMPLATES } from '../data/templates'
 import { EXERCISE_MAP, parseYoutubeId } from '../data/exercises'
 import { DEFAULT_NOTIF } from '../db/db'
@@ -349,5 +350,59 @@ describe('reminderEngine', () => {
     // 01:00 reminder is the very end of the app-day, after 22:00
     const r = buildReminders(ctx({ prefs: { ...DEFAULT_NOTIF, gymTime: '01:00' } })).find((x) => x.kind === 'gym')!
     expect(r.atMin).toBeGreaterThan(shiftToAppDay('22:00', 4))
+  })
+})
+
+describe('reminderPlan (native scheduling)', () => {
+  const supps: Supplement[] = [
+    { id: 'b12', name: 'B12', dose: 1500, unit: 'mcg', schedule: { kind: 'weekdays', days: [1, 3, 5] }, reminderTime: '10:30', active: true },
+    { id: 'cr', name: 'Creatine', dose: 5, unit: 'g', schedule: { kind: 'daily' }, reminderTime: '10:30', active: true },
+  ]
+  const base = (o: Partial<PlanInput> = {}): PlanInput => ({
+    today: '2026-10-12', // Monday
+    boundaryHour: 4,
+    prefs: { ...DEFAULT_NOTIF, enabled: true },
+    schedule: DEFAULT_SCHEDULE,
+    overrides: {},
+    supplements: supps,
+    supplementLogs: [],
+    proteinTarget: 95,
+    todayState: { gymDone: false, proteinG: 0, foodLogs: 0 },
+    lastWeightDate: '2026-10-12',
+    lastWaistDate: '2026-10-12',
+    ...o,
+  })
+  it('plans gym reminders only on workout days, for the next 7 days', () => {
+    const gym = planReminders(base()).filter((r) => r.kind === 'gym')
+    expect(gym.map((r) => r.date)).toEqual(['2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15', '2026-10-16', '2026-10-17']) // Sun is rest
+    expect(gym[0].fireMinutes).toBe(18 * 60)
+  })
+  it('B12 is planned Mon/Wed/Fri only; creatine daily', () => {
+    const p = planReminders(base())
+    expect(p.filter((r) => r.id.startsWith('supp:b12')).map((r) => r.date)).toEqual(['2026-10-12', '2026-10-14', '2026-10-16'])
+    expect(p.filter((r) => r.id.startsWith('supp:cr')).length).toBe(7)
+  })
+  it('answered prompts disappear for today but future days stay', () => {
+    const p = planReminders(base({ todayState: { gymDone: true, proteinG: 0, foodLogs: 3 }, supplementLogs: [{ date: '2026-10-12', supplementId: 'cr', takenAt: 0 }] }))
+    expect(p.some((r) => r.date === '2026-10-12' && r.kind === 'gym')).toBe(false)
+    expect(p.some((r) => r.date === '2026-10-12' && r.kind === 'meals')).toBe(false)
+    expect(p.some((r) => r.date === '2026-10-12' && r.id.startsWith('supp:cr'))).toBe(false)
+    expect(p.some((r) => r.date === '2026-10-13' && r.id.startsWith('supp:cr'))).toBe(true)
+  })
+  it('weigh-in inside the window', () => {
+    const w = planReminders(base({ lastWeightDate: '2026-10-08' })).filter((r) => r.kind === 'weight')
+    expect(w[0].date).toBe('2026-10-15')
+  })
+  it('after-midnight reminder times land on the next calendar day', () => {
+    const p = planReminders(base({ prefs: { ...DEFAULT_NOTIF, enabled: true, gymTime: '01:00' } })).filter((r) => r.kind === 'gym')
+    expect(p[0].date).toBe('2026-10-12')
+    expect(p[0].fireDate).toBe('2026-10-13')
+    expect(p[0].fireMinutes).toBe(60)
+  })
+  it('notification ids are stable, positive ints', () => {
+    expect(notificationId('gym:2026-10-12')).toBe(notificationId('gym:2026-10-12'))
+    expect(notificationId('gym:2026-10-12')).not.toBe(notificationId('gym:2026-10-13'))
+    expect(notificationId('x')).toBeGreaterThan(0)
+    expect(notificationId('x')).toBeLessThan(2 ** 31)
   })
 })
